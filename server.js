@@ -56,6 +56,7 @@ app.use(session);
 app.use(users);
 
 app.use((_req, res) => {
+  console.log("doing the old 404")
   res.sendStatus(404);
 });
 
