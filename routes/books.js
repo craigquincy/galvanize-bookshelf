@@ -1,30 +1,23 @@
 'use strict';
 
 const express = require('express');
+const boom = require('boom');
+const knex = require('../knex');
 
 // eslint-disable-next-line new-cap
 const router = express.Router();
 
-const knex = require('../knex');
-
-const bodyParser = require('body-parser');
-const inflector = require('json-inflector');
-const { camelizeKeys, decamelizeKeys } = require('humps');
-
-
-router.use(bodyParser.json());
-
-router.use(inflector());
-
-
-let books = []
+const {
+  camelizeKeys,
+  decamelizeKeys
+} = require('humps');
 
 router.get('/books', function(req, res, next) {
 
   knex('books')
     .orderBy('title')
     .then((books) => {
-      res.json(books);
+      res.json(camelizeKeys(books));
     })
     .catch((err) => {
       next(err);
@@ -39,32 +32,39 @@ router.get('/books/:id', function(req, res, next) {
   }
 
   knex('books')
-  .where('id', id)
-  .first()
-  .then((book) => {
-    if (!book) {
-      return next();
-    }
-    res.json(book);
-  })
-  .catch((err) => {
-    next(err);
-  });
+    .where('id', id)
+    .first()
+    .then((book) => {
+      if (!book) {
+        throw boom.create(404, 'Not Found');
+      }
+      res.json(camelizeKeys(book));
+    })
+    .catch((err) => {
+      next(err);
+    });
 });
 
 router.post('/books', function(req, res, next) {
-  let insertBook = {
-    title: req.body.title,
-    author: req.body.author,
-    cover_url: req.body.cover_url,
-    genre: req.body.genre,
-    description: req.body.description,
-  }
+  const {
+    title,
+    author,
+    genre,
+    description,
+    coverUrl
+  } = req.body;
 
-  console.log("inserting", insertBook)
+  const insertBook = {
+    title,
+    author,
+    genre,
+    description,
+    coverUrl
+  };
 
   knex('books')
-    .insert(decamelizeKeys(insertBook), '*')
+    .returning('*')
+    .insert(decamelizeKeys(insertBook))
     .then((rows) => {
       const book = camelizeKeys(rows[0]);
 
@@ -74,52 +74,60 @@ router.post('/books', function(req, res, next) {
       next(err);
     });
 
-
-  // const { title, author, genre, description, coverUrl } = req.body;
-
-  // knex('books')
-  //   .returning('*')
-  //   .insert(book, '*')
-  //   .then((books) => {
-  //     res.json(books[0]);
-  //   })
-  //   .catch((err) => {
-  //     next(err);
-  //   });
 });
 
 router.patch('/books/:id', (req, res, next) => {
+
+  const id = Number.parseInt(req.params.id);
+
+  if (Number.isNaN(id)) {
+    return next();
+  }
+
   knex('books')
-    .where('id', req.params.id)
+    .where('id', id)
     .first()
     .then((book) => {
       if (!book) {
-        return next();
+        throw boom.create(404, 'Not Found');
+      }
+      const {
+        title,
+        author,
+        genre,
+        description,
+        coverUrl
+      } = req.body;
+      const updateBook = {};
+
+      if (title) {
+        updateBook.title = title;
+      }
+
+      if (author) {
+        updateBook.author = author;
+      }
+
+      if (genre) {
+        updateBook.genre = genre;
+      }
+
+      if (description) {
+        updateBook.description = description;
+      }
+
+      if (coverUrl) {
+        updateBook.coverUrl = coverUrl;
       }
 
       return knex('books')
-        .where('id', req.body.book_id)
-        .first();
+        .update(decamelizeKeys(updateBook), '*')
+        .where('id', id);
     })
-    .then((book) => {
-      if (!book) {
-        const err = new Error('book_id does not exist');
+    .then((rows) => {
+      const book = camelizeKeys(rows[0]);
 
-        err.status = 400;
-
-        throw err;
-      }
-
-      return knex('books')
-        .update({
-          book_id: req.body.book_id,
-          title: req.body.title,
-          likes: req.body.likes
-        }, '*')
-        .where('id', req.params.id);
-    })
-    .then((books) => {
-      res.json(books[0]);
+      res.send(book);
     })
     .catch((err) => {
       next(err);
@@ -145,7 +153,7 @@ router.delete('/books/:id', (req, res, next) => {
     })
     .then(() => {
       delete book.id;
-      res.json(book);
+      res.json(camelizeKeys(book));
     })
     .catch((err) => {
       next(err);
